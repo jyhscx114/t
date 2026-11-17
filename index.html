@@ -476,6 +476,10 @@
       border-radius: 0 !important;
     }
 
+    [hidden] {
+      display: none !important;
+    }
+
     html {
       min-height: 100%;
       background: var(--desktop);
@@ -894,6 +898,82 @@
       min-height: 82px;
     }
 
+    .share-panel {
+      padding: 12px;
+    }
+
+    .share-panel[hidden],
+    .share-output[hidden] {
+      display: none;
+    }
+
+    body.share-mode .menubar,
+    body.share-mode .program-info,
+    body.share-mode .workspace,
+    body.share-mode .footnote {
+      display: none;
+    }
+
+    body.share-mode .shell {
+      width: min(760px, 100%);
+    }
+
+    .share-window {
+      min-height: 300px;
+      padding: 24px;
+      border: 2px groove var(--light);
+      background: var(--face);
+    }
+
+    .share-prompt h2 {
+      margin: 2px 0 7px;
+      font-size: 18px;
+    }
+
+    .share-summary {
+      min-height: 36px;
+      margin: 0 0 18px;
+      color: var(--black);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .share-password {
+      margin-bottom: 12px;
+    }
+
+    .share-password label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+
+    #share-password-input {
+      min-height: 76px;
+      padding: 10px 72px 10px 14px;
+      font-family: "Courier New", "SimSun", monospace;
+      font-size: 22px;
+    }
+
+    .share-password .reveal {
+      top: 9px;
+      right: 6px;
+      bottom: 9px;
+      min-width: 58px;
+      padding: 2px 8px;
+      font-size: 12px;
+    }
+
+    .share-output {
+      margin-top: 14px;
+    }
+
+    .share-output textarea {
+      min-height: 320px;
+      padding: 8px;
+      white-space: pre-wrap;
+    }
+
     .message {
       margin-top: 10px;
       padding: 5px 7px;
@@ -962,6 +1042,20 @@
         padding: 7px;
       }
 
+      .share-panel {
+        padding: 7px;
+      }
+
+      .share-window {
+        min-height: 0;
+        padding: 14px;
+      }
+
+      #share-password-input {
+        min-height: 68px;
+        font-size: 19px;
+      }
+
       .card {
         padding: 8px;
       }
@@ -981,7 +1075,7 @@
     <header class="masthead">
       <div class="window-title">
         <span class="app-icon" aria-hidden="true">密</span>
-        <h1>文本加密压缩工具</h1>
+        <h1 id="app-title">文本加密压缩工具</h1>
       </div>
       <div class="window-controls" aria-hidden="true">
         <span>_</span>
@@ -999,6 +1093,41 @@
       <p class="lede">在浏览器本地压缩并加密文本。程序没有后端，也不加载外部脚本；密码和明文不会离开当前设备。</p>
       <span class="local-badge">仅在本机处理</span>
     </div>
+
+    <section class="share-panel" id="share-panel" aria-labelledby="share-title" hidden>
+      <div class="share-window">
+        <div class="share-prompt">
+          <span class="step">安全分享</span>
+          <h2 id="share-title">打开分享内容</h2>
+          <p class="share-summary" id="share-summary">此链接包含一段待还原的文本。</p>
+        </div>
+
+        <div class="share-password" id="share-password-area">
+          <label for="share-password-input">密码</label>
+          <div class="password-wrap">
+            <input id="share-password-input" type="password" placeholder="输入密码；未加密内容可留空" autocomplete="off" spellcheck="false" autocapitalize="off">
+            <button class="reveal" type="button" data-reveal="share-password-input" aria-label="显示或隐藏密码">显示</button>
+          </div>
+        </div>
+
+        <div class="message" id="share-message" role="alert"></div>
+
+        <div class="actions" id="share-unlock-actions">
+          <button class="button primary" id="share-open" type="button">打开内容</button>
+        </div>
+
+        <div class="share-output" id="share-output" hidden>
+          <div class="result-meta">
+            <span id="share-output-stats">已解锁</span>
+            <span class="status-pill secure" id="share-output-status">内容已解密</span>
+          </div>
+          <textarea id="share-plaintext" readonly aria-label="分享内容" spellcheck="false"></textarea>
+          <div class="actions">
+            <button class="button secondary" id="share-copy" type="button">复制内容</button>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div class="workspace">
       <section class="card" aria-labelledby="create-title">
@@ -1159,6 +1288,20 @@
       const shareLink = document.querySelector("#share-link");
       const linkStats = document.querySelector("#link-stats");
       const linkStatus = document.querySelector("#link-status");
+      const appTitle = document.querySelector("#app-title");
+      const sharePanel = document.querySelector("#share-panel");
+      const shareTitle = document.querySelector("#share-title");
+      const shareSummary = document.querySelector("#share-summary");
+      const sharePasswordArea = document.querySelector("#share-password-area");
+      const sharePasswordInput = document.querySelector("#share-password-input");
+      const shareOpenButton = document.querySelector("#share-open");
+      const shareUnlockActions = document.querySelector("#share-unlock-actions");
+      const shareMessage = document.querySelector("#share-message");
+      const shareOutput = document.querySelector("#share-output");
+      const sharePlaintext = document.querySelector("#share-plaintext");
+      const shareOutputStats = document.querySelector("#share-output-stats");
+      const shareOutputStatus = document.querySelector("#share-output-status");
+      let sharedEncrypted = false;
 
       function showMessage(element, text, kind) {
         element.textContent = text;
@@ -1343,6 +1486,23 @@
         }
       }
 
+      function enterShareMode() {
+        hideMessage(shareMessage);
+        document.body.classList.add("share-mode");
+        appTitle.textContent = "打开分享内容";
+        shareTitle.textContent = "打开分享内容";
+        shareSummary.textContent = "此链接包含一段待还原的文本。";
+        sharePasswordInput.value = "";
+        sharePlaintext.value = "";
+        shareOutputStatus.textContent = "内容已解密";
+        shareOutputStatus.className = "status-pill secure";
+        sharedEncrypted = false;
+        sharePanel.hidden = false;
+        sharePasswordArea.hidden = false;
+        shareUnlockActions.hidden = false;
+        shareOutput.hidden = true;
+      }
+
       function loadSharedCiphertext() {
         if (!location.hash) return;
 
@@ -1350,33 +1510,65 @@
         try {
           value = decodeURIComponent(location.hash.slice(1)).trim();
         } catch {
-          showMessage(decryptMessage, "链接中的密文编码无效。", "error");
+          enterShareMode();
+          showMessage(shareMessage, "链接中的密文编码无效。", "error");
           return;
         }
         if (!value.startsWith(PREFIX)) return;
 
+        enterShareMode();
         ciphertext.value = value;
         let encrypted;
         try {
           encrypted = isEncryptedResult(value);
         } catch {
-          showMessage(decryptMessage, "链接中的密文格式不完整。", "error");
+          showMessage(shareMessage, "链接中的密文格式不完整。", "error");
           return;
         }
+        sharedEncrypted = encrypted;
 
-        decryptStats.textContent = `已从链接载入 · ${formatBytes(encoder.encode(value).length)}`;
-        decryptStatus.textContent = encrypted ? "等待密码" : "未加密内容";
-        decryptStatus.className = `status-pill ${encrypted ? "secure" : "open"}`;
-        showMessage(decryptMessage, encrypted
-          ? "已从链接载入密文。输入密码后点击“还原文本”。"
-          : "已从链接载入未加密内容。点击“还原文本”查看。", encrypted ? "success" : "error");
-        if (encrypted) restorePassword.focus();
-        else decryptButton.focus();
+        shareSummary.textContent = encrypted
+          ? `此链接包含一段加密文本（${formatBytes(encoder.encode(value).length)}）。请输入密码。`
+          : `此链接包含一段未加密文本（${formatBytes(encoder.encode(value).length)}），密码可留空。`;
+        sharePasswordInput.placeholder = encrypted
+          ? "输入分享者提供的密码"
+          : "此链接未加密，可直接留空";
+        sharePasswordInput.focus();
 
         try {
           history.replaceState(null, "", location.href.split("#")[0]);
         } catch {
           // Some file:// environments do not allow rewriting the address bar.
+        }
+      }
+
+      async function openSharedContent() {
+        hideMessage(shareMessage);
+        setBusy(shareOpenButton, true);
+        try {
+          restorePassword.value = sharePasswordInput.value;
+          await decryptText();
+          if (!decryptedOutput.value) {
+            showMessage(shareMessage, decryptMessage.textContent || "无法打开内容。", "error");
+            sharePasswordInput.focus();
+            sharePasswordInput.select();
+            return;
+          }
+
+          sharePlaintext.value = decryptedOutput.value;
+          shareOutputStats.textContent = `已解锁 · ${formatBytes(encoder.encode(sharePlaintext.value).length)}`;
+          shareOutputStatus.textContent = sharedEncrypted ? "内容已解密" : "未加密内容";
+          shareOutputStatus.className = `status-pill ${sharedEncrypted ? "secure" : "open"}`;
+          shareTitle.textContent = "分享内容";
+          appTitle.textContent = "分享内容";
+          shareSummary.textContent = sharedEncrypted
+            ? "内容已在当前浏览器本地解密。"
+            : "内容已在当前浏览器本地打开；该链接未加密。";
+          sharePasswordArea.hidden = true;
+          shareUnlockActions.hidden = true;
+          shareOutput.hidden = false;
+        } finally {
+          setBusy(shareOpenButton, false, "打开内容");
         }
       }
 
@@ -1494,6 +1686,13 @@
       createPassword.addEventListener("input", updatePasswordMode);
       encryptButton.addEventListener("click", encryptText);
       decryptButton.addEventListener("click", decryptText);
+      shareOpenButton.addEventListener("click", openSharedContent);
+      sharePasswordInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          openSharedContent();
+        }
+      });
 
       document.querySelectorAll("[data-reveal]").forEach((button) => {
         button.addEventListener("click", () => {
@@ -1559,7 +1758,17 @@
         }
       });
 
+      document.querySelector("#share-copy").addEventListener("click", async () => {
+        try {
+          await copyText(sharePlaintext.value, "还没有可复制的内容。");
+          showMessage(shareMessage, "分享内容已复制到剪贴板。", "success");
+        } catch (error) {
+          showMessage(shareMessage, error.message, "error");
+        }
+      });
+
       document.querySelector("#download-encrypted").addEventListener("click", downloadText);
+      window.addEventListener("hashchange", loadSharedCiphertext);
       loadSharedCiphertext();
     })();
   </script>
